@@ -23,16 +23,36 @@ import streamlit as st
 @st.cache_resource(show_spinner="Installing headless Chromium (first run only)…")
 def ensure_chromium():
     """Streamlit Cloud installs pip deps but not Playwright's browser binary.
-    Install it once per container; cached so it runs only on cold start."""
+    Install it once per container; cached so it runs only on cold start.
+
+    We try `install --with-deps` first: it lets Playwright resolve the correct
+    system-library package names for whatever Debian release the container runs
+    (e.g. the t64-renamed libs on Debian trixie), avoiding the apt conflicts you
+    get from hand-pinning names in packages.txt. If the deps step can't run
+    (needs root and sudo isn't available), we fall back to installing just the
+    browser binary and rely on packages.txt / the base image for system libs."""
+    env = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": "0"}
+    # Attempt 1: browser + system deps
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
+            check=True, capture_output=True, timeout=600, env=env,
+        )
+        return True
+    except Exception:
+        pass
+    # Attempt 2: browser binary only (system libs assumed present)
     try:
         subprocess.run(
             [sys.executable, "-m", "playwright", "install", "chromium"],
-            check=True, capture_output=True, timeout=300,
-            env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": "0"},
+            check=True, capture_output=True, timeout=300, env=env,
         )
         return True
     except Exception as e:
-        return f"{type(e).__name__}: {e}"
+        detail = ""
+        if isinstance(e, subprocess.CalledProcessError):
+            detail = (e.stderr or b"").decode("utf-8", "replace")[-500:]
+        return f"{type(e).__name__}: {e}\n{detail}"
 
 
 from scanner import run_scan, aggregate

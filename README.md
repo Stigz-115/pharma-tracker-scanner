@@ -34,7 +34,7 @@ crawler would miss.
 | `phi_detect.py` | PHI/PII leakage heuristics |
 | `report.py` | Standalone HTML report generator |
 | `requirements.txt` | Python deps |
-| `packages.txt` | Debian system libs Chromium needs on Streamlit Cloud |
+| `packages.txt` | Minimal apt list (fonts only); Chromium libs handled at runtime |
 | `Dockerfile` | Self-host on any container host (Chromium preinstalled) |
 | `run_local.sh` | One-shot venv setup + launch for local dev |
 | `.gitignore` / `.dockerignore` | Standard ignores |
@@ -97,13 +97,23 @@ git push -u origin main
 
 1. Push these files to a public GitHub repo.
 2. On https://share.streamlit.io, create a new app pointing at `app.py`.
-3. `requirements.txt` and `packages.txt` are picked up automatically —
-   `packages.txt` installs the system libraries Chromium needs.
-4. The Playwright **browser binary** is *not* installed by pip. The app handles
-   this itself: on first scan it runs `playwright install chromium` (cached per
-   container via `@st.cache_resource`, with `PLAYWRIGHT_BROWSERS_PATH=0` so the
-   binary lands inside the venv). First scan on a cold container takes ~30–60s
+3. `requirements.txt` and `packages.txt` are picked up automatically. Playwright
+   is pinned to `1.49.0` in `requirements.txt` because newer releases expect
+   system libraries that Community Cloud's Debian image doesn't carry.
+4. Neither the Playwright **browser binary** nor its **system libraries** are
+   installed by pip. The app handles both on first scan: `ensure_chromium()`
+   runs `playwright install --with-deps chromium`, which lets Playwright resolve
+   the correct system-library package names for the container's Debian release
+   itself. It's cached per container (`@st.cache_resource`,
+   `PLAYWRIGHT_BROWSERS_PATH=0`). First scan on a cold container takes ~30–60s
    extra while Chromium downloads; subsequent scans are fast.
+
+> **Do not** hand-list Chromium's libraries (`libglib2.0-0`, `libnss3`,
+> `libpango-1.0-0`, etc.) in `packages.txt`. On current Debian (trixie) those
+> packages were renamed with a `t64` suffix (`libglib2.0-0t64`), and pinning the
+> old names produces an unsatisfiable apt conflict — the exact
+> `held broken packages` / `libglib2.0-0t64 Breaks libglib2.0-0` error. Leave
+> `packages.txt` minimal (just `fonts-liberation`) and let `--with-deps` do it.
 
 ### If Chromium still won't launch on Streamlit Cloud
 
@@ -112,10 +122,13 @@ heavy. If you hit crashes on large crawls:
 - Keep **Pages to crawl** low (≤ 5) and settle time moderate.
 - The launch args already include `--no-sandbox --disable-dev-shm-usage
   --disable-gpu` for constrained containers.
+- If `--with-deps` can't install system libs (it needs root, which Community
+  Cloud may deny), the app falls back to installing just the browser binary —
+  in that case Chromium may fail to launch, and the Docker path below is the fix.
 - For heavy production use, deploy on a container host you control (Render, Fly,
-  a VM, or Docker) instead of Community Cloud — same code, more RAM. A minimal
-  Dockerfile: base `mcr.microsoft.com/playwright/python`, `pip install -r
-  requirements.txt`, `CMD streamlit run app.py`.
+  Railway, Cloud Run, or a VM) using the included `Dockerfile`, which builds on
+  the official Playwright image with Chromium and all libraries preinstalled —
+  no runtime download, more RAM, and none of the apt issues above.
 
 ## Notes & limits
 
