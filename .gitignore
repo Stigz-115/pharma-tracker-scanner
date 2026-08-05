@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Playwright browser binaries (installed at runtime, never commit)
+.playwright/
+ms-playwright/
+playwright-browsers/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Scan outputs / local artifacts
+*.zip
+scan_data.json
+raw_requests.csv
+phi_findings.csv
+tracker_report.html
+vendors.csv
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

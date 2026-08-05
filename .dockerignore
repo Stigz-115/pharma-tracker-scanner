@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.git/
+.gitignore
+.DS_Store
+*.zip
+tracker_report.html
+scan_data.json
+*.csv
