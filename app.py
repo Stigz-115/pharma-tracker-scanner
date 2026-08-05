@@ -25,34 +25,44 @@ def ensure_chromium():
     """Streamlit Cloud installs pip deps but not Playwright's browser binary.
     Install it once per container; cached so it runs only on cold start.
 
-    We try `install --with-deps` first: it lets Playwright resolve the correct
-    system-library package names for whatever Debian release the container runs
-    (e.g. the t64-renamed libs on Debian trixie), avoiding the apt conflicts you
-    get from hand-pinning names in packages.txt. If the deps step can't run
-    (needs root and sudo isn't available), we fall back to installing just the
-    browser binary and rely on packages.txt / the base image for system libs."""
+    Order matters. `playwright install --with-deps` runs `apt-get update` across
+    ALL of the container's apt repos first; if any one repo is unreachable or
+    unsigned, apt returns code 100 and the whole command fails *before the
+    browser is ever downloaded* ("Failed to install browsers ... exited with
+    code: 100"). So we do the reverse:
+
+      1. Install just the Chromium binary (no apt — this is the part that must
+         succeed and it only needs network to the Playwright CDN).
+      2. Best-effort attempt the system libs via --with-deps, but treat ANY
+         failure as non-fatal: on Community Cloud the libs from packages.txt /
+         the base image are usually enough, and on the Docker image they're
+         already present.
+
+    Returns True if the browser binary is installed, else an error string."""
     env = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": "0"}
-    # Attempt 1: browser + system deps
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
-            check=True, capture_output=True, timeout=600, env=env,
-        )
-        return True
-    except Exception:
-        pass
-    # Attempt 2: browser binary only (system libs assumed present)
+
+    # Step 1 — browser binary (required)
     try:
         subprocess.run(
             [sys.executable, "-m", "playwright", "install", "chromium"],
-            check=True, capture_output=True, timeout=300, env=env,
+            check=True, capture_output=True, timeout=600, env=env,
         )
-        return True
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or b"").decode("utf-8", "replace")[-800:]
+        return f"Chromium download failed (exit {e.returncode}).\n{detail}"
     except Exception as e:
-        detail = ""
-        if isinstance(e, subprocess.CalledProcessError):
-            detail = (e.stderr or b"").decode("utf-8", "replace")[-500:]
-        return f"{type(e).__name__}: {e}\n{detail}"
+        return f"Chromium install failed: {type(e).__name__}: {e}"
+
+    # Step 2 — system libraries (best-effort, never fatal)
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install-deps", "chromium"],
+            check=False, capture_output=True, timeout=300, env=env,
+        )
+    except Exception:
+        pass  # libs may already be present; launch will tell us if not
+
+    return True
 
 
 from scanner import run_scan, aggregate

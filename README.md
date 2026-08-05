@@ -34,7 +34,7 @@ crawler would miss.
 | `phi_detect.py` | PHI/PII leakage heuristics |
 | `report.py` | Standalone HTML report generator |
 | `requirements.txt` | Python deps |
-| `packages.txt` | Minimal apt list (fonts only); Chromium libs handled at runtime |
+| `packages.txt` | Empty on purpose — Chromium + libs handled at runtime (see notes) |
 | `Dockerfile` | Self-host on any container host (Chromium preinstalled) |
 | `run_local.sh` | One-shot venv setup + launch for local dev |
 | `.gitignore` / `.dockerignore` | Standard ignores |
@@ -100,20 +100,25 @@ git push -u origin main
 3. `requirements.txt` and `packages.txt` are picked up automatically. Playwright
    is pinned to `1.49.0` in `requirements.txt` because newer releases expect
    system libraries that Community Cloud's Debian image doesn't carry.
-4. Neither the Playwright **browser binary** nor its **system libraries** are
-   installed by pip. The app handles both on first scan: `ensure_chromium()`
-   runs `playwright install --with-deps chromium`, which lets Playwright resolve
-   the correct system-library package names for the container's Debian release
-   itself. It's cached per container (`@st.cache_resource`,
-   `PLAYWRIGHT_BROWSERS_PATH=0`). First scan on a cold container takes ~30–60s
-   extra while Chromium downloads; subsequent scans are fast.
+4. `packages.txt` is intentionally **empty**. Chromium's system libraries and
+   the browser binary are both handled at runtime by `ensure_chromium()`, which
+   installs the browser first (the required part, no apt) and then best-effort
+   attempts system libs. First scan on a cold container takes ~30–60s extra
+   while Chromium downloads; subsequent scans are fast.
 
-> **Do not** hand-list Chromium's libraries (`libglib2.0-0`, `libnss3`,
-> `libpango-1.0-0`, etc.) in `packages.txt`. On current Debian (trixie) those
-> packages were renamed with a `t64` suffix (`libglib2.0-0t64`), and pinning the
-> old names produces an unsatisfiable apt conflict — the exact
-> `held broken packages` / `libglib2.0-0t64 Breaks libglib2.0-0` error. Leave
-> `packages.txt` minimal (just `fonts-liberation`) and let `--with-deps` do it.
+> **Why `packages.txt` is empty, and why not `--with-deps`:** two apt traps bit
+> earlier versions of this app. (1) Hand-listing Chromium's libraries
+> (`libglib2.0-0`, etc.) breaks because current Debian (trixie) renamed them with
+> a `t64` suffix — pinning the old names gives an unsatisfiable
+> `held broken packages` conflict. (2) `playwright install --with-deps` runs
+> `apt-get update` across every configured repo first; if any single repo is
+> unreachable or unsigned, apt returns code 100 and the command fails *before
+> the browser even downloads* ("Failed to install browsers ... exited with code:
+> 100"). So we install the browser binary alone (which only needs the Playwright
+> CDN), and treat system-lib installation as best-effort. If you ever see
+> `installer returned a non-zero exit code` in the Cloud build log, it's the apt
+> step — keep `packages.txt` empty and confirm your push actually reached the
+> branch Cloud deploys from.
 
 ### If Chromium still won't launch on Streamlit Cloud
 
