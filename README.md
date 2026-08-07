@@ -98,8 +98,8 @@ git push -u origin main
 1. Push these files to a public GitHub repo.
 2. On https://share.streamlit.io, create a new app pointing at `app.py`.
 3. `requirements.txt` and `packages.txt` are picked up automatically. Playwright
-   is pinned to `1.49.0` in `requirements.txt` because newer releases expect
-   system libraries that Community Cloud's Debian image doesn't carry.
+   is pinned to `1.55.0` — see the note below on why an older exact pin broke
+   the build.
 4. `packages.txt` is intentionally **empty**. Chromium's system libraries and
    the browser binary are both handled at runtime by `ensure_chromium()`, which
    installs the browser first (the required part, no apt) and then best-effort
@@ -119,6 +119,20 @@ git push -u origin main
 > `installer returned a non-zero exit code` in the Cloud build log, it's the apt
 > step — keep `packages.txt` empty and confirm your push actually reached the
 > branch Cloud deploys from.
+
+> **`installer returned a non-zero exit code` can also mean a pip build
+> failure, not apt.** Streamlit Community Cloud's Python version isn't
+> reliably pinnable from the repo — it has been observed ignoring a
+> `runtime.txt` pin (e.g. `3.11`) and building with a newer default (currently
+> Python 3.14) regardless. `playwright==1.49.0` hard-pins `greenlet==3.1.1`,
+> which has no prebuilt wheel for 3.14 and fails to compile — 3.14 made
+> `_PyInterpreterFrame` an opaque type and renamed
+> `c_recursion_remaining`/`Py_C_RECURSION_LIMIT`, which greenlet's C extension
+> depends on directly. Playwright 1.55+ relaxes its greenlet requirement to a
+> range (`>=3.1.1,<4.0.0`), which resolves to `greenlet==3.2.x` — that version
+> *does* ship a `cp314` wheel, so pip installs it instead of compiling. If you
+> ever need a specific Python version, set it in the app's Settings ->
+> Advanced UI on Community Cloud rather than via `runtime.txt`.
 
 ### If Chromium still won't launch on Streamlit Cloud
 

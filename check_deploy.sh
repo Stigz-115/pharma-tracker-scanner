@@ -34,11 +34,25 @@ else
 fi
 
 echo "== 2. requirements.txt =="
-if grep -q 'playwright==1.49.0' requirements.txt 2>/dev/null; then
-  ok "playwright pinned to 1.49.0"
+if grep -qE 'playwright==1\.49\.0' requirements.txt 2>/dev/null; then
+  bad "playwright pinned to 1.49.0 — hard-pins greenlet==3.1.1, which has no"
+  info "     prebuilt wheel for Python 3.14 and fails to compile against it"
+  info "FIX: bump to playwright==1.55.0 (or newer) so greenlet resolves to a"
+  info "     range (>=3.1.1,<4.0.0) and pip picks 3.2.x, which ships a cp314 wheel"
+elif grep -q 'playwright' requirements.txt 2>/dev/null; then
+  ok "playwright pin: $(grep -i playwright requirements.txt)"
 else
-  bad "playwright not pinned to 1.49.0"
-  info "current: $(grep -i playwright requirements.txt || echo '(none)')"
+  bad "no playwright entry in requirements.txt"
+fi
+if [ -f runtime.txt ]; then
+  bad "runtime.txt present ($(cat runtime.txt)) — Streamlit Cloud has been seen"
+  info "     ignoring this and building with its own default (currently 3.14"
+  info "     on Community Cloud) regardless of what's pinned here. Don't rely"
+  info "     on it; if you need a specific version, set it in the app's"
+  info "     Settings -> Advanced UI instead, and make requirements.txt work"
+  info "     under whatever Python Cloud actually gives you."
+else
+  ok "no runtime.txt — not fighting Cloud's actual (currently 3.14) default"
 fi
 
 echo "== 3. app.py bootstrap order =="
