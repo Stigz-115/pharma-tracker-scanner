@@ -39,8 +39,17 @@ def ensure_chromium():
          the base image are usually enough, and on the Docker image they're
          already present.
 
-    Returns True if the browser binary is installed, else an error string."""
-    env = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": "0"}
+    Returns True if the browser binary is installed, else an error string.
+
+    Deliberately does NOT set PLAYWRIGHT_BROWSERS_PATH=0 (install into the
+    venv's site-packages dir): the runtime app user often can't write there
+    (EACCES), and even when it can, that override was only ever applied to
+    this install subprocess's env, not the main process's — so the later
+    in-process browser launch in scanner.py would look in the default
+    location anyway, a mismatch. Using the default (~/.cache/ms-playwright)
+    for both install and launch keeps them consistent and stays inside a
+    directory the app user actually owns."""
+    env = os.environ
 
     # Step 1 — browser binary (required)
     try:
