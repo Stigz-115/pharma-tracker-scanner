@@ -7,6 +7,7 @@ network request across pre- and post-consent phases, then classifies against a
 vendor signature DB and scores compliance risk.
 """
 
+import html
 import io
 import json
 import zipfile
@@ -104,7 +105,7 @@ with st.sidebar:
     st.divider()
     st.caption("⚠️ Only scan sites you are authorized to test. Findings are heuristic "
                "and flag candidates for review, not legal conclusions.")
-    run = st.button("Run scan", type="primary", use_container_width=True)
+    run = st.button("Run scan", type="primary", width='stretch')
 
 # ---- validation ----
 def valid_url(u):
@@ -180,7 +181,7 @@ if "agg" in st.session_state:
                 ["severity", "type", "vendor", "host", "phase", "detail", "page"]]
             sev_rank = {"critical": 0, "high": 1, "medium": 2}
             df = df.sort_values("severity", key=lambda s: s.map(sev_rank))
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width='stretch', hide_index=True)
             st.caption("Raw emails, phone numbers, SSNs, DOBs, sensitive query params, and health "
                        "terms detected in requests to third-party hosts.")
         else:
@@ -192,11 +193,11 @@ if "agg" in st.session_state:
                      "clicked": p["consent_clicked"]} for p in agg["page_scores"]]
         st.markdown("**Trackers firing before consent acceptance**")
         if agg["consent_issues"]:
-            st.dataframe(pd.DataFrame(agg["consent_issues"]), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(agg["consent_issues"]), width='stretch', hide_index=True)
         else:
             st.success("No advertising/social/session-replay trackers fired before consent.")
         st.markdown("**Consent control detected per page**")
-        st.dataframe(pd.DataFrame(controls), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(controls), width='stretch', hide_index=True)
 
     # Inventory tab
     with tabs[2]:
@@ -205,7 +206,7 @@ if "agg" in st.session_state:
                 for name, v in agg["vendors"].items()]
         if rows:
             df = pd.DataFrame(rows).sort_values(["risk_weight", "requests"], ascending=False)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width='stretch', hide_index=True)
             st.bar_chart(df.set_index("vendor")["requests"])
         else:
             st.info("No known-vendor trackers matched. Check the raw request export for unknowns.")
@@ -216,13 +217,13 @@ if "agg" in st.session_state:
                   "pages_seen": len(v["pages"])} for k, v in agg["cookies"].items()]
         if crows:
             st.dataframe(pd.DataFrame(crows).sort_values("pages_seen", ascending=False),
-                         use_container_width=True, hide_index=True)
+                         width='stretch', hide_index=True)
         else:
             st.info("No cookies captured.")
 
     # Per-page tab
     with tabs[4]:
-        st.dataframe(pd.DataFrame(agg["page_scores"]), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(agg["page_scores"]), width='stretch', hide_index=True)
 
     # Export tab
     with tabs[5]:
@@ -256,15 +257,15 @@ if "agg" in st.session_state:
         colA, colB = st.columns(2)
         with colA:
             st.download_button("📄 HTML report", html_report, "tracker_report.html",
-                               "text/html", use_container_width=True)
+                               "text/html", width='stretch')
             st.download_button("🧾 Raw requests (CSV)", raw_df.to_csv(index=False),
-                               "raw_requests.csv", "text/csv", use_container_width=True)
+                               "raw_requests.csv", "text/csv", width='stretch')
             if not phi_df.empty:
                 st.download_button("🚨 PHI findings (CSV)", phi_df.to_csv(index=False),
-                                   "phi_findings.csv", "text/csv", use_container_width=True)
+                                   "phi_findings.csv", "text/csv", width='stretch')
         with colB:
             st.download_button("🗄 Full data (JSON)", json_blob, "scan_data.json",
-                               "application/json", use_container_width=True)
+                               "application/json", width='stretch')
             # zip bundle
             zbuf = io.BytesIO()
             with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -277,10 +278,20 @@ if "agg" in st.session_state:
                     z.writestr("vendors.csv", vend_df.to_csv(index=False))
             st.download_button("📦 Everything (ZIP)", zbuf.getvalue(),
                                "pharma_scan_bundle.zip", "application/zip",
-                               use_container_width=True)
+                               width='stretch')
 
         st.markdown("#### Report preview")
-        st.components.v1.html(html_report, height=520, scrolling=True)
+        # Embed the self-contained report inside a sandboxed iframe via srcdoc so
+        # its document-level CSS (body/table/h1 rules) stays isolated from the
+        # Streamlit page. st.html replaces the deprecated st.components.v1.html;
+        # the iframe restores the height/scrolling and style isolation that
+        # st.components.v1.html gave us.
+        srcdoc = html.escape(html_report)
+        st.html(
+            f'<iframe srcdoc="{srcdoc}" '
+            'style="width:100%;height:520px;border:1px solid #e6e9ee;'
+            'border-radius:10px;" sandbox></iframe>'
+        )
 
 else:
     st.info("Enter a URL in the sidebar and click **Run scan** to begin.")
