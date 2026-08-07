@@ -199,6 +199,17 @@ if "agg" in st.session_state:
                 ["severity", "type", "vendor", "host", "phase", "detail", "page"]]
             sev_rank = {"critical": 0, "high": 1, "medium": 2}
             df = df.sort_values("severity", key=lambda s: s.map(sev_rank))
+            st.info(
+                "These are **regex pattern matches, not confirmed leaks** — review each "
+                "finding's raw URL/request (Export tab) before treating it as a real issue. "
+                "Common false positives: **phone_number** / **date_of_birth** hits are often "
+                "random tokens, ray IDs, or timestamps in a request that happen to fall into "
+                "a digit grouping the pattern matches (bot-protection domains like "
+                "`challenges.cloudflare.com` frequently trigger this and don't collect phone "
+                "numbers). A **vendor/host** that's a CDN, bot-protection, or infra domain "
+                "rather than an ad-tech/analytics one is a signal to double-check before acting.",
+                icon="ℹ️",
+            )
             st.dataframe(df, width='stretch', hide_index=True)
             st.caption("Raw emails, phone numbers, SSNs, DOBs, sensitive query params, and health "
                        "terms detected in requests to third-party hosts.")
