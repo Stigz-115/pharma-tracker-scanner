@@ -199,17 +199,33 @@ if "agg" in st.session_state:
                 ["severity", "type", "vendor", "host", "phase", "detail", "page"]]
             sev_rank = {"critical": 0, "high": 1, "medium": 2}
             df = df.sort_values("severity", key=lambda s: s.map(sev_rank))
-            st.info(
-                "These are **regex pattern matches, not confirmed leaks** — review each "
-                "finding's raw URL/request (Export tab) before treating it as a real issue. "
-                "Common false positives: **phone_number** / **date_of_birth** hits are often "
-                "random tokens, ray IDs, or timestamps in a request that happen to fall into "
-                "a digit grouping the pattern matches (bot-protection domains like "
-                "`challenges.cloudflare.com` frequently trigger this and don't collect phone "
-                "numbers). A **vendor/host** that's a CDN, bot-protection, or infra domain "
-                "rather than an ad-tech/analytics one is a signal to double-check before acting.",
-                icon="ℹ️",
-            )
+            with st.expander("ℹ️ Legend / how to read this tab"):
+                st.markdown(
+                    "- **severity** — `critical` (+40 to page score), `high` (+25), or "
+                    "`medium` (+10). Raw emails/SSNs are `critical`; phone numbers, DOBs, "
+                    "and sensitive query-param names are `high`; health-condition-term "
+                    "leakage and hashed identifiers are `medium`.\n"
+                    "- **type** — what matched: `email_address`, `phone_number`, `ssn`, "
+                    "`date_of_birth`, `sensitive_param:<name>` (e.g. a query param literally "
+                    "named `email` or `diagnosis`), `health_term:<term>` (a condition/drug "
+                    "keyword in the URL), or `hashed_identifier` (a hashed value alongside "
+                    "an `em`/`hash`/`sha` param — common for ad-platform email matching).\n"
+                    "- **vendor / host** — the matched vendor name, or the raw hostname if "
+                    "it isn't in the signature DB.\n"
+                    "- **phase** — `pre_consent` or `post_consent`.\n"
+                    "- **detail** — the specific match (e.g. which query param, which "
+                    "pattern).\n"
+                    "- **page** — URL the request originated from.\n\n"
+                    "**These are regex pattern matches, not confirmed leaks** — review each "
+                    "finding's raw URL/request (Export tab) before treating it as a real "
+                    "issue. Common false positives: **phone_number** / **date_of_birth** "
+                    "hits are often random tokens, ray IDs, or timestamps that happen to "
+                    "fall into a digit grouping the pattern matches (bot-protection domains "
+                    "like `challenges.cloudflare.com` frequently trigger this and don't "
+                    "collect phone numbers). A **vendor/host** that's a CDN, bot-protection, "
+                    "or infra domain rather than an ad-tech/analytics one is a signal to "
+                    "double-check before acting."
+                )
             st.dataframe(df, width='stretch', hide_index=True)
             st.caption("Raw emails, phone numbers, SSNs, DOBs, sensitive query params, and health "
                        "terms detected in requests to third-party hosts.")
