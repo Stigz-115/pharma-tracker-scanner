@@ -220,6 +220,24 @@ if "agg" in st.session_state:
     with tabs[1]:
         controls = [{"page": p["page"], "consent_control": p["consent_control"],
                      "clicked": p["consent_clicked"]} for p in agg["page_scores"]]
+        with st.expander("ℹ️ Legend / how to read this tab"):
+            st.markdown(
+                "**Trackers firing before consent acceptance** — any request in the "
+                "`advertising`, `social_pixel`, `data_broker`, or `session_replay` "
+                "categories that fired during the pre-consent phase (before the scanner "
+                "clicked an accept-all control). Most privacy frameworks expect "
+                "non-essential trackers to wait for affirmative consent, so anything "
+                "listed here is worth reviewing regardless of severity — the `issue` "
+                "column is just a presence flag, not a score. The score impact of these "
+                "hits (6 points each) is baked into the **Per-page** tab.\n\n"
+                "**Consent control detected per page** — which cookie-banner control the "
+                "scanner found and clicked (`consent_control`), and whether the click "
+                "succeeded (`clicked`). A blank/`None` control does **not** necessarily "
+                "mean the page has no consent banner or is non-compliant — it can also "
+                "mean the banner uses button text/selectors the scanner's detection list "
+                "(`scanner.py`'s `ACCEPT_SELECTORS`/`ACCEPT_TEXT`) doesn't recognize. "
+                "Treat a blank control as \"unverified,\" not \"confirmed absent.\""
+            )
         st.markdown("**Trackers firing before consent acceptance**")
         if agg["consent_issues"]:
             st.dataframe(pd.DataFrame(agg["consent_issues"]), width='stretch', hide_index=True)
@@ -230,6 +248,28 @@ if "agg" in st.session_state:
 
     # Inventory tab
     with tabs[2]:
+        with st.expander("ℹ️ Legend / how to read this tab"):
+            weight_rows = "\n".join(
+                f"| `{cat}` | {w} |" for cat, w in
+                sorted(CATEGORY_WEIGHTS.items(), key=lambda kv: -kv[1]))
+            st.markdown(
+                "Every third-party request is matched against a built-in signature DB "
+                "(40+ known vendors); unmatched third-party domains aren't shown here — "
+                "check the raw request export if you need the full picture.\n\n"
+                "- **vendor** — matched entry from the signature DB (`signatures.py`).\n"
+                "- **category** — drives risk weighting; see the table below. "
+                "`social_pixel` and `data_broker` carry the highest pharma-compliance "
+                "concern (identity resolution / audience matching), `session_replay` is "
+                "elevated because it can capture form input, and `cdn`/`error_monitoring` "
+                "are informational only.\n"
+                "- **risk_weight** — points this vendor's category contributes per "
+                "occurrence to a page's score (see **Per-page** tab).\n"
+                "- **requests** — total requests to this vendor across the whole crawl "
+                "(both consent phases).\n"
+                "- **pages** — distinct pages that triggered this vendor.\n\n"
+                "Rows are sorted by risk weight, then request volume — review top-to-bottom.\n\n"
+                "| category | risk weight |\n|---|---|\n" + weight_rows
+            )
         rows = [{"vendor": name, "category": v["category"], "requests": v["requests"],
                  "pages": len(v["pages"]), "risk_weight": CATEGORY_WEIGHTS.get(v["category"], 2)}
                 for name, v in agg["vendors"].items()]
@@ -242,6 +282,20 @@ if "agg" in st.session_state:
 
     # Cookies tab
     with tabs[3]:
+        with st.expander("ℹ️ Legend / how to read this tab"):
+            st.markdown(
+                "Every cookie observed during the crawl, across both pre- and "
+                "post-consent phases.\n\n"
+                "- **cookie** — cookie name.\n"
+                "- **domains** — domain(s) that set it. First-party domains here aren't "
+                "automatically fine, and third-party domains aren't automatically a "
+                "problem — cross-reference against your own cookie policy / CMP "
+                "declaration.\n"
+                "- **pages_seen** — how many crawled pages set this cookie.\n\n"
+                "This tab is a **descriptive inventory only** — it doesn't classify "
+                "cookies as strictly-necessary vs. non-essential. A cookie set here that "
+                "isn't declared in your CMP's cookie list is the thing worth chasing down."
+            )
         crows = [{"cookie": k, "domains": ", ".join(sorted(x for x in v["domains"] if x)),
                   "pages_seen": len(v["pages"])} for k, v in agg["cookies"].items()]
         if crows:
@@ -252,6 +306,22 @@ if "agg" in st.session_state:
 
     # Per-page tab
     with tabs[4]:
+        with st.expander("ℹ️ Legend / how to read this tab"):
+            st.markdown(
+                "One row per crawled page.\n\n"
+                "- **page** — URL crawled.\n"
+                "- **score** — this page's weighted risk score: the risk weight of each "
+                "unique vendor+category hit (see **Tracker inventory** tab), plus PHI "
+                "severity points (critical +40, high +25, medium +10 per finding), plus "
+                "+6 for each tracker that fired pre-consent. Higher = worse; there's no "
+                "fixed ceiling per page. The site-level score shown at the top is the "
+                "average across all pages (capped at 100, and floored at 85 if any "
+                "finding anywhere is `critical`).\n"
+                "- **error** — set if the scanner failed to load this page (timeout, DNS, "
+                "etc.); the rest of that row's data will be empty/partial when this is set.\n"
+                "- **consent_clicked** / **consent_control** — same detection as the "
+                "**Consent** tab, per page."
+            )
         st.dataframe(pd.DataFrame(agg["page_scores"]), width='stretch', hide_index=True)
 
     # Export tab
