@@ -49,8 +49,17 @@ def ensure_chromium():
             check=True, capture_output=True, timeout=600, env=env,
         )
     except subprocess.CalledProcessError as e:
-        detail = (e.stderr or b"").decode("utf-8", "replace")[-800:]
+        # Playwright's installer CLI often writes the actual failure reason
+        # (network error, download URL, disk space) to stdout, not stderr.
+        out = (e.stdout or b"").decode("utf-8", "replace")
+        err = (e.stderr or b"").decode("utf-8", "replace")
+        detail = (out + "\n" + err).strip()[-1200:]
         return f"Chromium download failed (exit {e.returncode}).\n{detail}"
+    except subprocess.TimeoutExpired as e:
+        out = (e.stdout or b"").decode("utf-8", "replace") if e.stdout else ""
+        err = (e.stderr or b"").decode("utf-8", "replace") if e.stderr else ""
+        detail = (out + "\n" + err).strip()[-1200:]
+        return f"Chromium download timed out after {e.timeout}s.\n{detail}"
     except Exception as e:
         return f"Chromium install failed: {type(e).__name__}: {e}"
 
