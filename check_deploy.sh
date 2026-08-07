@@ -16,19 +16,26 @@ info() { printf "  ->   %s\n" "$1"; }
 
 echo "== 1. packages.txt =="
 if [ ! -f packages.txt ]; then
-  ok "packages.txt absent (fine — no apt step at all)"
+  ok "packages.txt absent — no system libs installed; only fine if Chromium's"
+  info "     launch-time libs are already present in the base image"
 else
   bytes=$(wc -c < packages.txt | tr -d ' ')
   if [ "$bytes" -eq 0 ]; then
-    ok "packages.txt is empty ($bytes bytes) — apt step will pass"
+    bad "packages.txt is empty — Chromium's launch will fail with"
+    info "     'Host system is missing dependencies to run browsers'"
+    info "FIX: list the exact package names Playwright's own launch error"
+    info "     reports (it detects the container's actual Debian release)"
   else
-    # empty-but-for-whitespace is also fine; real package names are the problem
-    if grep -qE '^\s*lib|^\s*fonts|^\s*[a-z0-9]' packages.txt; then
-      bad "packages.txt lists packages — this is what breaks apt on Debian trixie"
+    # Debian trixie renamed several of these with a t64 suffix
+    # (e.g. libglib2.0-0 -> libglib2.0-0t64); the un-suffixed names produce
+    # an unsatisfiable apt conflict ('held broken packages').
+    if grep -qE '^\s*(libglib2\.0-0|libatk1\.0-0|libatk-bridge2\.0-0|libatspi2\.0-0|libasound2)\s*$' packages.txt; then
+      bad "packages.txt lists OLD (pre-t64) package names — apt conflict on Debian trixie"
       info "contents:"; sed 's/^/       | /' packages.txt
-      info "FIX: empty it ->  : > packages.txt   (or delete the file)"
+      info "FIX: use the t64-suffixed names from Playwright's launch error"
     else
-      ok "packages.txt has only whitespace — harmless"
+      ok "packages.txt has $(grep -cE '^\s*[a-z0-9]' packages.txt) package entries"
+      info "contents:"; sed 's/^/       | /' packages.txt
     fi
   fi
 fi

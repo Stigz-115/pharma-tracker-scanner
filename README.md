@@ -34,7 +34,7 @@ crawler would miss.
 | `phi_detect.py` | PHI/PII leakage heuristics |
 | `report.py` | Standalone HTML report generator |
 | `requirements.txt` | Python deps |
-| `packages.txt` | Empty on purpose — Chromium + libs handled at runtime (see notes) |
+| `packages.txt` | apt system libs Chromium needs to launch (see notes) |
 | `Dockerfile` | Self-host on any container host (Chromium preinstalled) |
 | `run_local.sh` | One-shot venv setup + launch for local dev |
 | `.gitignore` / `.dockerignore` | Standard ignores |
@@ -100,25 +100,32 @@ git push -u origin main
 3. `requirements.txt` and `packages.txt` are picked up automatically. Playwright
    is pinned to `1.55.0` — see the note below on why an older exact pin broke
    the build.
-4. `packages.txt` is intentionally **empty**. Chromium's system libraries and
-   the browser binary are both handled at runtime by `ensure_chromium()`, which
-   installs the browser first (the required part, no apt) and then best-effort
-   attempts system libs. First scan on a cold container takes ~30–60s extra
-   while Chromium downloads; subsequent scans are fast.
+4. `packages.txt` lists the apt packages Chromium needs to **launch**
+   (glib, nss, atk, dbus, etc.) — installed at build time by Streamlit Cloud
+   itself (which runs as root), since the app's own runtime process can't
+   `sudo apt-get install` anything. The browser **binary** is separate and
+   handled at runtime by `ensure_chromium()` (`playwright install chromium`,
+   no apt involved). First scan on a cold container takes ~30–60s extra while
+   Chromium downloads; subsequent scans are fast.
 
-> **Why `packages.txt` is empty, and why not `--with-deps`:** two apt traps bit
-> earlier versions of this app. (1) Hand-listing Chromium's libraries
-> (`libglib2.0-0`, etc.) breaks because current Debian (trixie) renamed them with
-> a `t64` suffix — pinning the old names gives an unsatisfiable
-> `held broken packages` conflict. (2) `playwright install --with-deps` runs
+> **Why `packages.txt` isn't hand-guessed, and why not `--with-deps`:** two
+> apt traps bit earlier versions of this app. (1) Hand-listing Chromium's
+> libraries with their old Debian names (`libglib2.0-0`, `libatk1.0-0`, etc.)
+> breaks because current Debian (trixie) renamed them with a `t64` suffix
+> (`libglib2.0-0t64`) — pinning the old names gives an unsatisfiable
+> `held broken packages` conflict. The names currently in `packages.txt` were
+> copied verbatim from Playwright's own `BrowserType.launch` error, which
+> detects the container's actual Debian release and prints the exact names it
+> needs — trust that over any list found elsewhere, since Debian's naming has
+> changed more than once. (2) `playwright install --with-deps` runs
 > `apt-get update` across every configured repo first; if any single repo is
 > unreachable or unsigned, apt returns code 100 and the command fails *before
 > the browser even downloads* ("Failed to install browsers ... exited with code:
-> 100"). So we install the browser binary alone (which only needs the Playwright
-> CDN), and treat system-lib installation as best-effort. If you ever see
-> `installer returned a non-zero exit code` in the Cloud build log, it's the apt
-> step — keep `packages.txt` empty and confirm your push actually reached the
-> branch Cloud deploys from.
+> 100"). So we install the browser binary alone via pip's `ensure_chromium()`
+> (no apt), and rely on `packages.txt` alone for the system libs. If you ever
+> see `installer returned a non-zero exit code` in the Cloud **build** log
+> (distinct from a launch-time error in the **app** log), it's `packages.txt`'s
+> apt step or `requirements.txt`'s pip step — check which one printed last.
 
 > **`installer returned a non-zero exit code` can also mean a pip build
 > failure, not apt.** Streamlit Community Cloud's Python version isn't
@@ -141,9 +148,12 @@ heavy. If you hit crashes on large crawls:
 - Keep **Pages to crawl** low (≤ 5) and settle time moderate.
 - The launch args already include `--no-sandbox --disable-dev-shm-usage
   --disable-gpu` for constrained containers.
-- If `--with-deps` can't install system libs (it needs root, which Community
-  Cloud may deny), the app falls back to installing just the browser binary —
-  in that case Chromium may fail to launch, and the Docker path below is the fix.
+- If Chromium launch fails with "Host system is missing dependencies to run
+  browsers", that's `packages.txt` being out of date for whatever Debian
+  release Cloud is currently on — copy the exact package names from the error
+  message (they include the current `t64` suffixes) into `packages.txt`,
+  commit, push, and reboot the app. The runtime app process can't install
+  these itself (no root) — only Cloud's own build step can.
 - For heavy production use, deploy on a container host you control (Render, Fly,
   Railway, Cloud Run, or a VM) using the included `Dockerfile`, which builds on
   the official Playwright image with Chromium and all libraries preinstalled —
